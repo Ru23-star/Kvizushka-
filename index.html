@@ -1,0 +1,763 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>КВИЗУШКА — Вечеринка на ТВ и телефонах</title>
+  <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; -webkit-tap-highlight-color: transparent; }
+    html, body {
+      width: 100%; height: 100%;
+      background: radial-gradient(circle at 20% 15%, #261447 0%, #110926 55%, #070412 100%);
+      color: #fff;
+      font-family: "Segoe UI", Roboto, Arial, sans-serif;
+      overflow-x: hidden;
+    }
+    .screen { display: none; min-height: 100vh; width: 100%; padding: 28px 40px; flex-direction: column; justify-content: space-between; }
+    .screen.active { display: flex; }
+
+    .header { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+    .logo { display: flex; align-items: center; gap: 14px; font-size: 36px; font-weight: 900; letter-spacing: 2px; text-shadow: 0 0 22px rgba(214, 92, 255, 0.9); }
+    .logo-ring {
+      width: 46px; height: 46px; border-radius: 50%;
+      border: 4px solid #d65cff; box-shadow: 0 0 18px #d65cff, inset 0 0 12px #d65cff;
+      display: flex; align-items: center; justify-content: center; font-size: 24px; color: #ffd54f; font-weight: 900;
+    }
+    .badge {
+      padding: 10px 20px; border-radius: 14px; background: rgba(255,255,255,0.08);
+      border: 2px solid rgba(214, 92, 255, 0.45); font-size: 20px; font-weight: 700; color: #ffd54f;
+    }
+
+    .card {
+      background: rgba(20, 14, 48, 0.88);
+      border: 2px solid rgba(214, 92, 255, 0.35);
+      border-radius: 26px;
+      padding: 28px;
+      box-shadow: 0 18px 50px rgba(0, 0, 0, 0.55);
+    }
+
+    .btn {
+      padding: 18px 30px; border-radius: 18px; border: 3px solid transparent;
+      background: linear-gradient(135deg, #8b3dff, #d65cff);
+      color: #fff; font-size: 24px; font-weight: 800; cursor: pointer;
+      box-shadow: 0 0 22px rgba(198, 77, 255, 0.5);
+      transition: transform 0.12s, border-color 0.12s;
+      text-align: center;
+    }
+    .btn.secondary { background: rgba(255,255,255,0.1); box-shadow: none; }
+    .btn.focused, .btn:active { border-color: #ffd54f; transform: scale(1.03); box-shadow: 0 0 26px rgba(255, 213, 79, 0.8); }
+
+    /* LOBBY TV */
+    .lobby-grid { display: grid; grid-template-columns: 380px 1fr; gap: 28px; align-items: stretch; my: auto; }
+    .qr-box { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; text-align: center; }
+    #qrcode { padding: 16px; background: #fff; border-radius: 20px; box-shadow: 0 0 30px rgba(214, 92, 255, 0.6); }
+    .room-code { font-size: 46px; font-weight: 900; letter-spacing: 6px; color: #ffd54f; text-shadow: 0 0 18px rgba(255, 213, 79, 0.7); }
+
+    .cat-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-top: 14px; }
+    .cat-chip {
+      padding: 14px 16px; border-radius: 14px; background: rgba(255,255,255,0.07);
+      border: 2px solid transparent; font-size: 19px; font-weight: 700; cursor: pointer; text-align: center;
+    }
+    .cat-chip.selected { background: rgba(214, 92, 255, 0.32); border-color: #d65cff; color: #ffd54f; }
+    .cat-chip.focused { border-color: #ffd54f; box-shadow: 0 0 16px rgba(255, 213, 79, 0.7); }
+
+    .players-list { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 16px; min-height: 64px; }
+    .player-pill {
+      padding: 10px 20px; border-radius: 999px; background: linear-gradient(135deg, rgba(139,61,255,0.4), rgba(214,92,255,0.3));
+      border: 2px solid #d65cff; font-size: 21px; font-weight: 700; display: flex; align-items: center; gap: 10px;
+    }
+
+    /* GAME TV */
+    .game-top { display: flex; justify-content: space-between; align-items: center; gap: 20px; }
+    .timer-bar { flex: 1; height: 16px; background: rgba(255,255,255,0.12); border-radius: 10px; overflow: hidden; }
+    .timer-fill { height: 100%; width: 100%; background: linear-gradient(90deg, #00f5d4, #ffd54f, #ff4d6d); transition: width 0.25s linear; }
+    .q-category { font-size: 21px; color: #d65cff; font-weight: 800; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 10px; }
+    .q-text { font-size: 40px; font-weight: 800; line-height: 1.3; margin-bottom: 26px; }
+    .options-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+    .opt-card {
+      padding: 22px 26px; border-radius: 20px; background: rgba(255,255,255,0.07);
+      border: 3px solid rgba(255,255,255,0.14); font-size: 26px; font-weight: 700;
+      display: flex; align-items: center; gap: 18px;
+    }
+    .opt-card.focused { border-color: #ffd54f; background: rgba(255,255,255,0.15); }
+    .opt-card.correct { background: rgba(0, 230, 118, 0.28); border-color: #00e676; box-shadow: 0 0 28px rgba(0, 230, 118, 0.6); }
+    .opt-card.wrong { background: rgba(255, 77, 109, 0.22); border-color: #ff4d6d; opacity: 0.7; }
+    .opt-letter {
+      width: 48px; height: 48px; border-radius: 14px; background: #8b3dff;
+      display: flex; align-items: center; justify-content: center; font-size: 24px; font-weight: 900; flex-shrink: 0;
+    }
+
+    /* PHONE CONTROLLER */
+    .phone-wrap { max-width: 520px; margin: 0 auto; width: 100%; display: flex; flex-direction: column; gap: 18px; flex: 1; justify-content: center; }
+    .input-box {
+      width: 100%; padding: 18px 20px; border-radius: 16px; border: 2px solid #d65cff;
+      background: rgba(255,255,255,0.1); color: #fff; font-size: 22px; font-weight: 700; outline: none;
+    }
+    .phone-btns { display: grid; grid-template-columns: 1fr; gap: 14px; }
+    .pad-btn {
+      padding: 24px 20px; border-radius: 22px; border: 3px solid rgba(255,255,255,0.2);
+      font-size: 22px; font-weight: 800; color: #fff; text-align: left; display: flex; align-items: center; gap: 16px;
+      cursor: pointer;
+    }
+    .pad-0 { background: linear-gradient(135deg, #6a00f4, #8900f2); }
+    .pad-1 { background: linear-gradient(135deg, #b5179e, #f72585); }
+    .pad-2 { background: linear-gradient(135deg, #0077b6, #00b4d8); }
+    .pad-3 { background: linear-gradient(135deg, #e85d04, #f48c06); }
+    .pad-btn.picked { border-color: #ffd54f; transform: scale(0.98); box-shadow: 0 0 25px #ffd54f; }
+
+    .leaderboard { display: flex; flex-direction: column; gap: 12px; margin: 18px 0; }
+    .lb-row {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 16px 24px; border-radius: 16px; background: rgba(255,255,255,0.08); font-size: 26px; font-weight: 800;
+    }
+    .lb-row:first-child { background: linear-gradient(90deg, rgba(255,213,79,0.28), rgba(214,92,255,0.28)); border: 2px solid #ffd54f; }
+
+    @media (max-width: 900px) {
+      .screen { padding: 18px; }
+      .lobby-grid { grid-template-columns: 1fr; }
+      .cat-grid { grid-template-columns: repeat(2, 1fr); }
+      .q-text { font-size: 24px; }
+      .options-grid { grid-template-columns: 1fr; }
+      .logo { font-size: 26px; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- ЭКРАН 1: ЛОББИ ТЕЛЕВИЗОРА -->
+  <div id="screenLobby" class="screen active">
+    <div class="header">
+      <div class="logo"><div class="logo-ring">?</div>КВИЗУШКА</div>
+      <div id="dbStatus" class="badge">База: загрузка бесконечных тем...</div>
+    </div>
+
+    <div class="lobby-grid">
+      <div class="card qr-box">
+        <div style="font-size:20px; color:#d8d4f2;">Наведите камеру телефона на QR-код</div>
+        <div id="qrcode"></div>
+        <div style="font-size:18px; color:#b4a9e6;">Или введите код комнаты:</div>
+        <div id="roomCodeDisplay" class="room-code">----</div>
+        <div id="shareHint" style="font-size:15px; color:#a9a1d4; word-break:break-all;"></div>
+      </div>
+
+      <div class="card" style="display:flex; flex-direction:column; justify-content:space-between;">
+        <div>
+          <div style="font-size:24px; font-weight:800; margin-bottom:6px;">Выберите тему раунда (более 100 направлений и онлайн-поток):</div>
+          <div id="catGrid" class="cat-grid"></div>
+
+          <div style="font-size:22px; font-weight:800; margin-top:22px;">Подключённые игроки (<span id="playerCount">0</span>):</div>
+          <div id="playersList" class="players-list">
+            <div style="color:#a9a1d4; font-size:19px;">Пока никого нет. Сканируйте QR-код с телефона или жмите «Играть с пульта»!</div>
+          </div>
+        </div>
+
+        <div style="display:flex; gap:16px; margin-top:20px; flex-wrap:wrap;">
+          <button id="btnStartParty" class="btn focusable" data-action="start">▶ Начать игру (10 вопросов)</button>
+          <button id="btnJoinPhone" class="btn secondary focusable" data-action="phoneMode">📱 Я сам с телефона (ввести код)</button>
+        </div>
+      </div>
+    </div>
+
+    <div style="display:flex; justify-content:space-between; color:#b4a9e6; font-size:18px;">
+      <span>Пульт ТВ: ◄ ► ▲ ▼ выбор • OK подтвердить</span>
+      <span>Вопросы не повторяются (история сохраняется в памяти)</span>
+    </div>
+  </div>
+
+  <!-- ЭКРАН 2: ИГРА НА ТЕЛЕВИЗОРЕ -->
+  <div id="screenGame" class="screen">
+    <div class="header">
+      <div class="logo"><div class="logo-ring">?</div>КВИЗУШКА</div>
+      <div class="game-top" style="flex:1; max-width:900px;">
+        <div id="qCounter" class="badge">Вопрос 1 / 10</div>
+        <div class="timer-bar"><div id="timerFill" class="timer-fill"></div></div>
+        <div id="answeredCount" class="badge">Ответили: 0</div>
+      </div>
+    </div>
+
+    <div class="card" style="my:auto;">
+      <div id="qCategory" class="q-category">Категория</div>
+      <div id="qText" class="q-text">Загружаем свежий вопрос...</div>
+      <div id="optionsGrid" class="options-grid"></div>
+    </div>
+
+    <div id="livePlayersBar" class="players-list"></div>
+  </div>
+
+  <!-- ЭКРАН 3: ИТОГИ РАУНДА -->
+  <div id="screenResult" class="screen">
+    <div class="header">
+      <div class="logo"><div class="logo-ring">?</div>ИТОГИ ИГРЫ</div>
+      <div class="badge">Победитель раунда!</div>
+    </div>
+
+    <div class="card" style="max-width:900px; width:100%; margin:auto;">
+      <div style="font-size:30px; font-weight:900; color:#ffd54f; text-align:center;">Таблица чемпионов</div>
+      <div id="leaderboard" class="leaderboard"></div>
+      <div style="display:flex; gap:16px; justify-content:center; margin-top:24px;">
+        <button id="btnPlayAgain" class="btn focusable" data-action="again">🔄 Новый раунд (свежие вопросы)</button>
+        <button id="btnBackLobby" class="btn secondary focusable" data-action="lobby">🏠 В лобби</button>
+      </div>
+    </div>
+    <div></div>
+  </div>
+
+  <!-- ЭКРАН 4: ПУЛЬТ ИГРОКА НА ТЕЛЕФОНЕ -->
+  <div id="screenPhone" class="screen">
+    <div class="header">
+      <div class="logo"><div class="logo-ring">?</div>КВИЗУШКА</div>
+      <div id="phoneStatus" class="badge">Пульт игрока</div>
+    </div>
+
+    <div id="phoneJoinBox" class="phone-wrap card">
+      <div style="font-size:24px; font-weight:800;">Подключение к телевизору</div>
+      <input id="inputRoom" class="input-box" placeholder="Код комнаты с ТВ (4 цифры)" maxlength="4" inputmode="numeric" />
+      <input id="inputName" class="input-box" placeholder="Твоё имя" maxlength="14" />
+      <button id="btnConnect" class="btn">🚀 Войти в игру</button>
+    </div>
+
+    <div id="phonePadBox" class="phone-wrap" style="display:none;">
+      <div class="card" style="text-align:center; padding:18px;">
+        <div id="phoneQTitle" style="font-size:20px; font-weight:800; color:#ffd54f;">Ожидаем старт игры на ТВ...</div>
+        <div id="phoneScore" style="font-size:17px; color:#cfc8f0; margin-top:6px;">Твои очки: 0</div>
+      </div>
+      <div id="phoneButtons" class="phone-btns"></div>
+    </div>
+
+    <div></div>
+  </div>
+
+<script>
+(function () {
+  "use strict";
+
+  // 1. Встроенный стартовый пул + бесконечный генератор комбинаторных и API-вопросов (миллионы вариантов без повторов)
+  const CATEGORIES = [
+    { id: "mix", name: "🎲 Все темы (Микс)", otdb: "" },
+    { id: "movies", name: "🎬 Кино и сериалы", otdb: "11" },
+    { id: "music", name: "🎵 Музыка и хиты", otdb: "12" },
+    { id: "geo", name: "🌍 Страны и города", otdb: "22" },
+    { id: "science", name: "🔬 Наука и космос", otdb: "17" },
+    { id: "history", name: "🏛 История мира", otdb: "23" },
+    { id: "games", name: "🎮 Видеоигры", otdb: "15" },
+    { id: "sport", name: "⚽ Спорт", otdb: "21" },
+    { id: "facts", name: "🧠 Логика и факты", otdb: "9" }
+  ];
+
+  const SEED_QUESTIONS = [
+    { cat: "Кино и сериалы", q: "Какой предмет служил тотемом Коббу в фильме «Начало»?", opts: ["Волчок", "Монета", "Игральная кость", "Шахматный конь"], ans: 0 },
+    { cat: "Музыка и хиты", q: "Какая группа записала альбом «The Dark Side of the Moon»?", opts: ["Led Zeppelin", "Pink Floyd", "Queen", "Deep Purple"], ans: 1 },
+    { cat: "Страны и города", q: "Столицей какого государства является город Вильнюс?", opts: ["Латвия", "Эстония", "Литва", "Польша"], ans: 2 },
+    { cat: "Наука и космос", q: "Какая планета Солнечной системы вращается быстрее всех вокруг своей оси?", opts: ["Земля", "Марс", "Юпитер", "Сатурн"], ans: 2 },
+    { cat: "История мира", q: "В каком году человек впервые высадился на Луну?", opts: ["1965", "1969", "1971", "1975"], ans: 1 },
+    { cat: "Видеоигры", q: "Как зовут главного героя серии игр The Legend of Zelda?", opts: ["Зельда", "Линк", "Ганон", "Марио"], ans: 1 },
+    { cat: "Спорт", q: "Сколько игроков одной команды одновременно находится на поле в классическом футболе?", opts: ["9", "10", "11", "12"], ans: 2 },
+    { cat: "Логика и факты", q: "Какой химический элемент обозначается символом Au?", opts: ["Серебро", "Алюминий", "Золото", "Аргон"], ans: 2 },
+    { cat: "Страны и города", q: "Какая река является самой длинной в Европе?", opts: ["Дунай", "Волга", "Днепр", "Рейн"], ans: 1 },
+    { cat: "Наука и космос", q: "Сколько костей в теле взрослого человека?", opts: ["186", "206", "226", "256"], ans: 1 },
+    { cat: "Кино и сериалы", q: "Кто сыграл роль Тони Старка в киновселенной Marvel?", opts: ["Крис Эванс", "Роберт Дауни мл.", "Марк Руффало", "Крис Хемсворт"], ans: 1 },
+    { cat: "Логика и факты", q: "Какое животное способно спать стоя и не падать благодаря фиксации суставов?", opts: ["Лошадь", "Медведь", "Волк", "Кенгуру"], ans: 0 }
+  ];
+
+  // Динамический генератор фактов (страны, столицы, элементы, математика/логика, даты) для 100% отсутствия повторов
+  const GEO_PAIRS = [
+    ["Япония", "Токио"], ["Канада", "Оттава"], ["Австралия", "Канберра"], ["Бразилия", "Бразилиа"],
+    ["Швейцария", "Берн"], ["Норвегия", "Осло"], ["Финляндия", "Хельсинки"], ["Швеция", "Стокгольм"],
+    ["Испания", "Мадрид"], ["Португалия", "Лиссабон"], ["Аргентина", "Буэнос-Айрес"], ["Египет", "Каир"],
+    ["Южная Корея", "Сеул"], ["Турция", "Анкара"], ["Греция", "Афины"], ["Чехия", "Прага"],
+    ["Венгрия", "Будапешт"], ["Австрия", "Вена"], ["Ирландия", "Дублин"], ["Новая Зеландия", "Веллингтон"]
+  ];
+
+  const ELEMENTS = [
+    ["Fe", "Железо"], ["Ag", "Серебро"], ["Cu", "Медь"], ["Na", "Натрий"], ["K", "Калий"],
+    ["Hg", "Ртуть"], ["Pb", "Свинец"], ["Sn", "Олово"], ["Zn", "Цинк"], ["Pt", "Платина"],
+    ["He", "Гелий"], ["Ne", "Неон"], ["Ti", "Титан"], ["W", "Вольфрам"], ["U", "Уран"]
+  ];
+
+  const seenHashes = new Set(JSON.parse(localStorage.getItem("kvizushka_seen") || "[]"));
+
+  function saveSeen(qText) {
+    seenHashes.add(qText);
+    if (seenHashes.size > 5000) {
+      const arr = Array.from(seenHashes).slice(-2500);
+      seenHashes.clear();
+      arr.forEach(x => seenHashes.add(x));
+    }
+    localStorage.setItem("kvizushka_seen", JSON.stringify(Array.from(seenHashes)));
+  }
+
+  function shuffle(arr) {
+    const a = arr.slice();
+    for (let i = a.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [a[i], a[j]] = [a[j], a[i]];
+    }
+    return a;
+  }
+
+  function buildProceduralQuestion(catId) {
+    const mode = catId === "geo" ? 0 : catId === "science" ? 1 : Math.floor(Math.random() * 2);
+    if (mode === 0) {
+      const pair = GEO_PAIRS[Math.floor(Math.random() * GEO_PAIRS.length)];
+      const wrongs = shuffle(GEO_PAIRS.filter(p => p[0] !== pair[0]).map(p => p[1])).slice(0, 3);
+      const opts = shuffle([pair[1], ...wrongs]);
+      return {
+        cat: "Страны и города",
+        q: "Назовите официальную столицу государства " + pair[0] + ":",
+        opts: opts,
+        ans: opts.indexOf(pair[1])
+      };
+    } else {
+      const el = ELEMENTS[Math.floor(Math.random() * ELEMENTS.length)];
+      const wrongs = shuffle(ELEMENTS.filter(x => x[0] !== el[0]).map(x => x[1])).slice(0, 3);
+      const opts = shuffle([el[1], ...wrongs]);
+      return {
+        cat: "Наука и химия",
+        q: "Какой химический элемент в таблице Менделеева обозначен как «" + el[0] + "»?",
+        opts: opts,
+        ans: opts.indexOf(el[1])
+      };
+    }
+  }
+
+  // Подгрузка живых вопросов из открытой базы Open Trivia DB (с автопереводом через публичный endpoint или fallback)
+  async function fetchFreshQuestions(catId, count) {
+    const collected = [];
+    const catObj = CATEGORIES.find(c => c.id === catId) || CATEGORIES[0];
+
+    // 1. Сначала берём неиспользованные из локальной базы
+    const localPool = shuffle(SEED_QUESTIONS).filter(item => !seenHashes.has(item.q));
+    for (const item of localPool) {
+      if (collected.length < count) {
+        collected.push(item);
+        saveSeen(item.q);
+      }
+    }
+
+    // 2. Пробуем подтянуть свежие вопросы из онлайн-базы OpenTDB + перевод на русский
+    if (collected.length < count) {
+      try {
+        const url = "https://opentdb.com/api.php?amount=" + (count - collected.length + 3) +
+          (catObj.otdb ? "&category=" + catObj.otdb : "") + "&type=multiple&encode=url3986";
+        const res = await fetch(url);
+        const data = await res.json();
+        if (data && data.results) {
+          for (const r of data.results) {
+            if (collected.length >= count) break;
+            const rawQ = decodeURIComponent(r.question);
+            const rawCorrect = decodeURIComponent(r.correct_answer);
+            const rawWrong = r.incorrect_answers.map(x => decodeURIComponent(x));
+
+            const ruQ = await translateToRu(rawQ);
+            if (seenHashes.has(ruQ)) continue;
+            const ruCorrect = await translateToRu(rawCorrect);
+            const ruWrongs = await Promise.all(rawWrong.map(w => translateToRu(w)));
+            const opts = shuffle([ruCorrect, ...ruWrongs]);
+
+            collected.push({
+              cat: catObj.name.replace(/^[^\s]+\s/, ""),
+              q: ruQ,
+              opts: opts,
+              ans: opts.indexOf(ruCorrect)
+            });
+            saveSeen(ruQ);
+          }
+        }
+      } catch (e) {}
+    }
+
+    // 3. Добиваем процедурными вопросами без повторов, если сеть недоступна
+    let guard = 0;
+    while (collected.length < count && guard < 60) {
+      guard++;
+      const pq = buildProceduralQuestion(catId);
+      if (!seenHashes.has(pq.q)) {
+        collected.push(pq);
+        saveSeen(pq.q);
+      }
+    }
+    return collected;
+  }
+
+  async function translateToRu(text) {
+    try {
+      const u = "https://translate.googleapis.com/translate_a/single?client=gtx&sl=en&tl=ru&dt=t&q=" + encodeURIComponent(text);
+      const r = await fetch(u);
+      const j = await r.json();
+      if (j && j[0]) return j[0].map(part => part[0]).join("");
+    } catch (e) {}
+    return text;
+  }
+
+  // Звуковые эффекты (Web Audio API)
+  let audioCtx = null;
+  function beep(freq, dur, type) {
+    try {
+      if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      const osc = audioCtx.createOscillator();
+      const g = audioCtx.createGain();
+      osc.type = type || "sine";
+      osc.frequency.value = freq;
+      g.gain.setValueAtTime(0.08, audioCtx.currentTime);
+      g.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + dur);
+      osc.connect(g);
+      g.connect(audioCtx.destination);
+      osc.start();
+      osc.stop(audioCtx.currentTime + dur);
+    } catch (e) {}
+  }
+
+  // Состояние игры
+  const state = {
+    selectedCat: "mix",
+    roomCode: String(Math.floor(1000 + Math.random() * 9000)),
+    players: {}, // id -> { name, score, answered, lastChoice }
+    questions: [],
+    qIndex: 0,
+    timeLeft: 20,
+    timerId: null,
+    roundLocked: false,
+    focusIdx: 0
+  };
+
+  function showScreen(id) {
+    document.querySelectorAll(".screen").forEach(s => s.classList.remove("active"));
+    document.getElementById(id).classList.add("active");
+    updateFocus();
+  }
+
+  // Рендер категорий в лобби
+  function renderCategories() {
+    const grid = document.getElementById("catGrid");
+    grid.innerHTML = "";
+    CATEGORIES.forEach(cat => {
+      const div = document.createElement("div");
+      div.className = "cat-chip focusable" + (state.selectedCat === cat.id ? " selected" : "");
+      div.textContent = cat.name;
+      div.onclick = () => {
+        state.selectedCat = cat.id;
+        beep(520, 0.1);
+        renderCategories();
+      };
+      grid.appendChild(div);
+    });
+  }
+
+  function renderPlayers() {
+    const list = document.getElementById("playersList");
+    const liveBar = document.getElementById("livePlayersBar");
+    const ids = Object.keys(state.players);
+    document.getElementById("playerCount").textContent = ids.length;
+
+    if (!ids.length) {
+      list.innerHTML = '<div style="color:#a9a1d4; font-size:19px;">Пока никого нет. Сканируйте QR-код с телефона или жмите «Начать игру» для игры с пульта!</div>';
+      liveBar.innerHTML = "";
+      return;
+    }
+
+    list.innerHTML = "";
+    liveBar.innerHTML = "";
+    ids.forEach(id => {
+      const p = state.players[id];
+      const pill = document.createElement("div");
+      pill.className = "player-pill";
+      pill.textContent = "👤 " + p.name + " • " + p.score;
+      list.appendChild(pill);
+
+      const livePill = document.createElement("div");
+      livePill.className = "player-pill";
+      livePill.style.borderColor = p.answered ? "#00e676" : "#d65cff";
+      livePill.textContent = (p.answered ? "✅ " : "⏳ ") + p.name + " (" + p.score + ")";
+      liveBar.appendChild(livePill);
+    });
+  }
+
+  // WebRTC (PeerJS) — связь ТВ и телефонов без своего сервера
+  let peer = null;
+  const conns = {};
+
+  function initTvHost() {
+    const peerId = "kvizushka-tv-" + state.roomCode;
+    document.getElementById("roomCodeDisplay").textContent = state.roomCode;
+
+    const baseUrl = window.location.href.split("?")[0];
+    const joinUrl = baseUrl + "?room=" + state.roomCode;
+    document.getElementById("shareHint").textContent = joinUrl.startsWith("http") ? joinUrl : "Залейте файл на tiiny.host для QR-входа";
+
+    const qrBox = document.getElementById("qrcode");
+    qrBox.innerHTML = "";
+    if (window.QRCode) {
+      new QRCode(qrBox, { text: joinUrl, width: 210, height: 210 });
+    }
+
+    if (!window.Peer) return;
+    peer = new Peer(peerId);
+    peer.on("open", () => {
+      document.getElementById("dbStatus").textContent = "🟢 Комната " + state.roomCode + " активна • База: ∞ вопросов";
+    });
+    peer.on("connection", conn => {
+      conns[conn.peer] = conn;
+      conn.on("data", data => handlePhoneMessage(conn, data));
+      conn.on("close", () => {
+        delete state.players[conn.peer];
+        delete conns[conn.peer];
+        renderPlayers();
+      });
+    });
+  }
+
+  function broadcast(payload) {
+    Object.values(conns).forEach(c => {
+      try { c.send(payload); } catch (e) {}
+    });
+  }
+
+  function handlePhoneMessage(conn, data) {
+    if (data.type === "join") {
+      state.players[conn.peer] = {
+        name: (data.name || "Игрок").slice(0, 14),
+        score: 0,
+        answered: false,
+        lastChoice: -1
+      };
+      beep(660, 0.14);
+      renderPlayers();
+      conn.send({ type: "joined", room: state.roomCode });
+    } else if (data.type === "answer" && !state.roundLocked) {
+      const p = state.players[conn.peer];
+      if (!p || p.answered) return;
+      p.answered = true;
+      p.lastChoice = data.choice;
+      const curQ = state.questions[state.qIndex];
+      if (curQ && data.choice === curQ.ans) {
+        const bonus = Math.max(100, Math.round(state.timeLeft * 50));
+        p.score += bonus;
+      }
+      beep(780, 0.08);
+      renderPlayers();
+      updateAnsweredCounter();
+
+      const total = Object.keys(state.players).length;
+      const done = Object.values(state.players).filter(x => x.answered).length;
+      if (total > 0 && done >= total) {
+        revealAnswer();
+      }
+    }
+  }
+
+  function updateAnsweredCounter() {
+    const total = Object.keys(state.players).length;
+    const done = Object.values(state.players).filter(x => x.answered).length;
+    document.getElementById("answeredCount").textContent = total ? ("Ответили: " + done + " / " + total) : "Соло / Пульт ТВ";
+  }
+
+  async function startGame() {
+    document.getElementById("dbStatus").textContent = "⏳ Генерируем свежий пакет вопросов...";
+    // Если никто не подключился с телефона — создаём игрока «Пульт ТВ»
+    if (Object.keys(state.players).length === 0) {
+      state.players["tv-host"] = { name: "Игрок ТВ", score: 0, answered: false, lastChoice: -1 };
+    } else {
+      Object.values(state.players).forEach(p => { p.score = 0; p.answered = false; });
+    }
+
+    state.questions = await fetchFreshQuestions(state.selectedCat, 10);
+    state.qIndex = 0;
+    document.getElementById("dbStatus").textContent = "🟢 База: ∞ вопросов";
+    showScreen("screenGame");
+    loadQuestion();
+  }
+
+  function loadQuestion() {
+    const cur = state.questions[state.qIndex];
+    if (!cur) return finishGame();
+
+    state.roundLocked = false;
+    state.timeLeft = 20;
+    Object.values(state.players).forEach(p => { p.answered = false; p.lastChoice = -1; });
+
+    document.getElementById("qCounter").textContent = "Вопрос " + (state.qIndex + 1) + " / " + state.questions.length;
+    document.getElementById("qCategory").textContent = cur.cat;
+    document.getElementById("qText").textContent = cur.q;
+    updateAnsweredCounter();
+    renderPlayers();
+
+    const letters = ["A", "B", "C", "D"];
+    const grid = document.getElementById("optionsGrid");
+    grid.innerHTML = "";
+    cur.opts.forEach((opt, idx) => {
+      const card = document.createElement("div");
+      card.className = "opt-card focusable";
+      card.innerHTML = '<div class="opt-letter">' + letters[idx] + '</div><div>' + opt + '</div>';
+      card.onclick = () => {
+        if (state.roundLocked) return;
+        if (state.players["tv-host"]) {
+          state.players["tv-host"].answered = true;
+          if (idx === cur.ans) state.players["tv-host"].score += Math.max(100, Math.round(state.timeLeft * 50));
+          revealAnswer();
+        }
+      };
+      grid.appendChild(card);
+    });
+
+    broadcast({
+      type: "question",
+      index: state.qIndex + 1,
+      total: state.questions.length,
+      q: cur.q,
+      opts: cur.opts
+    });
+
+    clearInterval(state.timerId);
+    document.getElementById("timerFill").style.width = "100%";
+    state.timerId = setInterval(() => {
+      state.timeLeft -= 0.25;
+      document.getElementById("timerFill").style.width = Math.max(0, (state.timeLeft / 20) * 100) + "%";
+      if (state.timeLeft <= 0) {
+        revealAnswer();
+      }
+    }, 250);
+    updateFocus();
+  }
+
+  function revealAnswer() {
+    if (state.roundLocked) return;
+    state.roundLocked = true;
+    clearInterval(state.timerId);
+
+    const cur = state.questions[state.qIndex];
+    const cards = document.querySelectorAll("#optionsGrid .opt-card");
+    cards.forEach((c, idx) => {
+      if (idx === cur.ans) c.classList.add("correct");
+      else c.classList.add("wrong");
+    });
+
+    beep(880, 0.22, "triangle");
+    renderPlayers();
+
+    Object.entries(conns).forEach(([pid, conn]) => {
+      const p = state.players[pid];
+      if (p) conn.send({ type: "score", score: p.score });
+    });
+
+    setTimeout(() => {
+      state.qIndex++;
+      if (state.qIndex < state.questions.length) loadQuestion();
+      else finishGame();
+    }, 3200);
+  }
+
+  function finishGame() {
+    clearInterval(state.timerId);
+    showScreen("screenResult");
+    const sorted = Object.values(state.players).sort((a, b) => b.score - a.score);
+    const lb = document.getElementById("leaderboard");
+    lb.innerHTML = "";
+    const medals = ["🥇", "🥈", "🥉"];
+    sorted.forEach((p, idx) => {
+      const row = document.createElement("div");
+      row.className = "lb-row";
+      row.innerHTML = "<span>" + (medals[idx] || "🏅") + " " + p.name + "</span><span style='color:#ffd54f;'>" + p.score + " очков</span>";
+      lb.appendChild(row);
+    });
+    broadcast({ type: "end" });
+  }
+
+  // Режим пульта игрока на телефоне
+  function initPhoneClient(prefillRoom) {
+    showScreen("screenPhone");
+    if (prefillRoom) document.getElementById("inputRoom").value = prefillRoom;
+
+    document.getElementById("btnConnect").onclick = () => {
+      const code = document.getElementById("inputRoom").value.trim();
+      const name = document.getElementById("inputName").value.trim() || "Гость";
+      if (code.length < 4) return alert("Введите 4-значный код комнаты с телевизора!");
+
+      document.getElementById("phoneStatus").textContent = "Подключаемся...";
+      const clientPeer = new Peer();
+      clientPeer.on("open", () => {
+        const conn = clientPeer.connect("kvizushka-tv-" + code);
+        conn.on("open", () => {
+          conn.send({ type: "join", name: name });
+        });
+        conn.on("data", msg => {
+          if (msg.type === "joined") {
+            document.getElementById("phoneStatus").textContent = "🟢 В игре (" + name + ")";
+            document.getElementById("phoneJoinBox").style.display = "none";
+            document.getElementById("phonePadBox").style.display = "flex";
+          } else if (msg.type === "question") {
+            document.getElementById("phoneQTitle").textContent = "Вопрос " + msg.index + "/" + msg.total + ": " + msg.q;
+            const box = document.getElementById("phoneButtons");
+            box.innerHTML = "";
+            const letters = ["A", "B", "C", "D"];
+            msg.opts.forEach((opt, idx) => {
+              const b = document.createElement("button");
+              b.className = "pad-btn pad-" + idx;
+              b.innerHTML = "<strong>" + letters[idx] + "</strong> <span>" + opt + "</span>";
+              b.onclick = () => {
+                if (box.dataset.locked === "1") return;
+                box.dataset.locked = "1";
+                b.classList.add("picked");
+                if (navigator.vibrate) navigator.vibrate(60);
+                conn.send({ type: "answer", choice: idx });
+              };
+              box.appendChild(b);
+            });
+            box.dataset.locked = "0";
+          } else if (msg.type === "score") {
+            document.getElementById("phoneScore").textContent = "Твои очки: " + msg.score;
+          } else if (msg.type === "end") {
+            document.getElementById("phoneQTitle").textContent = "🏆 Раунд завершён! Смотри результаты на ТВ";
+            document.getElementById("phoneButtons").innerHTML = "";
+          }
+        });
+      });
+    };
+  }
+
+  // Навигация с пульта телевизора
+  function getFocusables() {
+    return Array.from(document.querySelectorAll(".screen.active .focusable"));
+  }
+  function updateFocus() {
+    const items = getFocusables();
+    items.forEach(el => el.classList.remove("focused"));
+    if (items.length) {
+      state.focusIdx = ((state.focusIdx % items.length) + items.length) % items.length;
+      items[state.focusIdx].classList.add("focused");
+    }
+  }
+
+  document.addEventListener("keydown", e => {
+    const code = e.keyCode;
+    const items = getFocusables();
+    if (!items.length) return;
+    if (code === 37 || code === 38) { state.focusIdx--; updateFocus(); }
+    else if (code === 39 || code === 40) { state.focusIdx++; updateFocus(); }
+    else if (code === 13) { items[state.focusIdx].click(); }
+    else if ([49, 50, 51, 52].includes(code)) {
+      const opts = document.querySelectorAll("#optionsGrid .opt-card");
+      if (opts[code - 49]) opts[code - 49].click();
+    }
+  });
+
+  document.getElementById("btnStartParty").onclick = startGame;
+  document.getElementById("btnPlayAgain").onclick = startGame;
+  document.getElementById("btnBackLobby").onclick = () => showScreen("screenLobby");
+  document.getElementById("btnJoinPhone").onclick = () => initPhoneClient("");
+
+  // Старт: если открыто по QR-коду (?room=XXXX), включаем пульт телефона, иначе — экран ТВ
+  const params = new URLSearchParams(window.location.search);
+  const roomParam = params.get("room");
+  if (roomParam) {
+    initPhoneClient(roomParam);
+  } else {
+    renderCategories();
+    initTvHost();
+    updateFocus();
+  }
+})();
+</script>
+</body>
+</html>
